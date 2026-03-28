@@ -47,7 +47,8 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
         ProcessInventory(newHighlights);
         ProcessStash(newHighlights);
-        ProcessShops(newHighlights); // <--- Add this line
+        ProcessShops(newHighlights);
+        ProcessTrade(newHighlights);
 
         _highlightCache.Update(newHighlights);
 
@@ -112,12 +113,20 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
         if (shopWindow != null)
         {
-            // We use the recursive search starting from the window root
-            // This is safer than the hardcoded GetChildFromIndices(8, 1) path
             FindMapsInElement(shopWindow, highlights);
         }
     }
+    private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights)
+    {
+        var tradeWindow = GameController.IngameState.IngameUi.TradeWindow;
 
+        if (tradeWindow != null && tradeWindow.IsVisible)
+        {
+            // We search the entire TradeWindow. 
+            // This will find maps in both your side and the other player's side.
+            FindMapsInElement(tradeWindow, highlights);
+        }
+    }
     private void ProcessItems(
         IEnumerable<NormalInventoryItem> items,
         Dictionary<long, MapHighlightInfo> highlights)
@@ -188,7 +197,8 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
                     }
                 }
             }
-            // Do NOT return here. Shop windows sometimes have complex nesting.
+            // Do NOT return here. Continue searching children to find 
+            // items nested inside trade slots or other containers.
         }
 
         if (element.ChildCount > 0)
