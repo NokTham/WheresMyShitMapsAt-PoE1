@@ -93,16 +93,17 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
     }
     private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights)
     {
+        // Check the new setting toggle
+        if (!Settings.FilterShops.Value) return;
+
         var ui = GameController.IngameState.IngameUi;
 
-        // 1. Check for Kingsmarch / Offline Merchant (MapNotify logic)
         var merchantPanel = ui.OfflineMerchantPanel;
         if (merchantPanel != null && merchantPanel.IsVisible)
         {
             FindMapsInElement(merchantPanel, highlights);
         }
 
-        // 2. Check for Purchase/Haggle Windows
         Element shopWindow = null;
         if (ui.PurchaseWindow?.IsVisible == true)
             shopWindow = ui.PurchaseWindow;
@@ -118,12 +119,13 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
     }
     private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights)
     {
+        // Check the new setting toggle
+        if (!Settings.FilterTrade.Value) return;
+
         var tradeWindow = GameController.IngameState.IngameUi.TradeWindow;
 
         if (tradeWindow != null && tradeWindow.IsVisible)
         {
-            // We search the entire TradeWindow. 
-            // This will find maps in both your side and the other player's side.
             FindMapsInElement(tradeWindow, highlights);
         }
     }
@@ -152,7 +154,11 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
         if (!Settings.Enable.Value)
             return;
 
-        if (!Settings.FilterInventory.Value && !Settings.FilterStash.Value)
+        // Ensure we don't exit early if ANY of the filters are active
+        if (!Settings.FilterInventory.Value &&
+            !Settings.FilterStash.Value &&
+            !Settings.FilterShops.Value &&
+            !Settings.FilterTrade.Value)
             return;
 
         _highlighter.RenderHighlights(_highlightCache.GetCurrentHighlights());
