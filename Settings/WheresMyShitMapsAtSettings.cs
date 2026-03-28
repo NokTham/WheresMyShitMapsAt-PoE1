@@ -1,4 +1,4 @@
-﻿using ExileCore.Shared.Interfaces;
+using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 using System.Collections.Generic;
 using System.Windows.Forms;
@@ -11,6 +11,8 @@ public sealed class WheresMyShitMapsAtSettings : ISettings
     public HotkeyNodeV2 PreviewHotkey { get; set; } = new(Keys.None);
     public ToggleNode FilterStash { get; set; } = new(false);
     public ToggleNode FilterInventory { get; set; } = new(true);
+    public ToggleNode FilterShops { get; set; } = new(true);
+    public ToggleNode FilterTrade { get; set; } = new(true);
     public List<TableEntry> Entries { get; set; } = [];
     public WheresMyShitMapsAtSettingsMenu Menu { get; set; }
 
