@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using WheresMyShitMapsAt.Types;
 
 namespace WheresMyShitMapsAt.Cache;
@@ -31,10 +31,8 @@ public sealed class HighlightCache
 
     public IReadOnlyDictionary<long, MapHighlightInfo> GetCurrentHighlights()
     {
-        lock (_swapLock)
-        {
-            return new Dictionary<long, MapHighlightInfo>(_activeCache);
-        }
+        // Return the active cache directly. Tick and Render are sequential in HUD.
+        return _activeCache;
     }
 
     public void Clear()
