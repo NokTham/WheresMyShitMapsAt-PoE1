@@ -37,18 +37,27 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
         return true;
     }
+    private DateTime _lastScanTime = DateTime.MinValue;
 
     public override Job Tick()
     {
+        // 1. Core toggle check
         if (!Settings.Enable.Value)
             return null;
 
+        if ((DateTime.Now - _lastScanTime).TotalMilliseconds < Settings.ScanInterval.Value)
+            return null;
+
+        _lastScanTime = DateTime.Now;
+
+        var activeEntries = Settings.Entries.Where(x => x.Active).ToList();
         var newHighlights = new Dictionary<long, MapHighlightInfo>();
 
-        ProcessInventory(newHighlights);
-        ProcessStash(newHighlights);
-        ProcessShops(newHighlights);
-        ProcessTrade(newHighlights);
+        // 4. Process various UI elements
+        ProcessInventory(newHighlights, activeEntries);
+        ProcessStash(newHighlights, activeEntries);
+        ProcessShops(newHighlights, activeEntries);
+        ProcessTrade(newHighlights, activeEntries);
 
         _highlightCache.Update(newHighlights);
 
@@ -66,7 +75,7 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
     public NormalInventoryItem GetPreviewItem() => _previewItem;
 
-    private void ProcessInventory(Dictionary<long, MapHighlightInfo> highlights)
+    private void ProcessInventory(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
     {
         if (!Settings.FilterInventory.Value || !GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
             return;
@@ -75,68 +84,57 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
             .InventoryPanel[InventoryIndex.PlayerInventory]
             .VisibleInventoryItems;
 
-        ProcessItems(inventoryItems, highlights);
+        // Update ProcessItems to also take activeEntries or just use the logic directly
+        ProcessItems(inventoryItems, highlights, activeEntries);
     }
 
-    private void ProcessStash(Dictionary<long, MapHighlightInfo> highlights)
+    private void ProcessStash(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
     {
         var stashElement = GameController.IngameState.IngameUi.StashElement;
         if (!Settings.FilterStash.Value || stashElement?.IsVisible != true)
             return;
 
-        // 1. Clear current highlights for the stash to prevent ghosting
-        // (This is handled by the 'new highlights' dict in Tick, so we just fill it)
-
-        // 2. Start the search from the root of the Stash UI
-        // This is exactly what made MapNotify work for specialized tabs
-        FindMapsInElement(stashElement, highlights);
+        FindMapsInElement(stashElement, highlights, activeEntries); // Fixed call
     }
-    private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights)
+
+    private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
     {
-        // Check the new setting toggle
         if (!Settings.FilterShops.Value) return;
 
         var ui = GameController.IngameState.IngameUi;
 
-        var merchantPanel = ui.OfflineMerchantPanel;
-        if (merchantPanel != null && merchantPanel.IsVisible)
-        {
-            FindMapsInElement(merchantPanel, highlights);
-        }
+        // Check various shop windows and pass the list
+        if (ui.OfflineMerchantPanel?.IsVisible == true)
+            FindMapsInElement(ui.OfflineMerchantPanel, highlights, activeEntries);
 
-        Element shopWindow = null;
-        if (ui.PurchaseWindow?.IsVisible == true)
-            shopWindow = ui.PurchaseWindow;
-        else if (ui.PurchaseWindowHideout?.IsVisible == true)
-            shopWindow = ui.PurchaseWindowHideout;
-        else if (ui.HaggleWindow?.IsVisible == true)
-            shopWindow = ui.HaggleWindow;
+        Element shopWindow = ui.PurchaseWindow?.IsVisible == true ? ui.PurchaseWindow :
+                            ui.PurchaseWindowHideout?.IsVisible == true ? ui.PurchaseWindowHideout :
+                            ui.HaggleWindow?.IsVisible == true ? ui.HaggleWindow : null;
 
         if (shopWindow != null)
-        {
-            FindMapsInElement(shopWindow, highlights);
-        }
+            FindMapsInElement(shopWindow, highlights, activeEntries);
     }
-    private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights)
+
+    private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
     {
-        // Check the new setting toggle
         if (!Settings.FilterTrade.Value) return;
 
         var tradeWindow = GameController.IngameState.IngameUi.TradeWindow;
-
         if (tradeWindow != null && tradeWindow.IsVisible)
         {
-            FindMapsInElement(tradeWindow, highlights);
+            FindMapsInElement(tradeWindow, highlights, activeEntries);
         }
     }
     private void ProcessItems(
-        IEnumerable<NormalInventoryItem> items,
-        Dictionary<long, MapHighlightInfo> highlights)
+    IEnumerable<NormalInventoryItem> items,
+    Dictionary<long, MapHighlightInfo> highlights,
+    List<TableEntry> activeEntries)
     {
         foreach (var item in items.Where(IsValidMap))
         {
             var mods = item.Item.GetComponent<Mods>();
-            var modMatch = MapModMatcher.MatchMods(mods, Settings.Entries);
+            // Pass the pre-filtered activeEntries here
+            var modMatch = MapModMatcher.MatchMods(mods, activeEntries);
 
             if (modMatch.HasAnyMatch)
             {
@@ -178,23 +176,24 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
             return false;
         }
     }
-    private void FindMapsInElement(Element element, Dictionary<long, MapHighlightInfo> highlights)
+    private void FindMapsInElement(Element element, Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
     {
-        if (element == null || !element.IsVisible) return;
-
-        var item = element.AsObject<NormalInventoryItem>();
-        if (item?.Item != null && item.Address != 0)
+        // 1. Basic visibility check
+        if (element == null || !element.IsVisible || element.Address == 0) return;
+        if (element.ChildCount <= 3)
         {
-            if (IsValidMap(item))
+            var item = element.AsObject<NormalInventoryItem>();
+            if (item?.Item != null && IsValidMap(item))
             {
-                if (!highlights.ContainsKey(item.Item.Address))
+                long addr = item.Item.Address;
+                if (!highlights.ContainsKey(addr))
                 {
                     var mods = item.Item.GetComponent<Mods>();
-                    var modMatch = MapModMatcher.MatchMods(mods, Settings.Entries);
+                    var modMatch = MapModMatcher.MatchMods(mods, activeEntries);
 
                     if (modMatch.HasAnyMatch)
                     {
-                        highlights[item.Item.Address] = new MapHighlightInfo(
+                        highlights[addr] = new MapHighlightInfo(
                             Center: item.GetClientRectCache.Center.ToVector2Num(),
                             HasBadMod: modMatch.HasBadMod,
                             HasGoodMod: modMatch.HasGoodMod,
@@ -203,16 +202,11 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
                     }
                 }
             }
-            // Do NOT return here. Continue searching children to find 
-            // items nested inside trade slots or other containers.
         }
-
-        if (element.ChildCount > 0)
+        var children = element.Children;
+        for (int i = 0; i < children.Count; i++)
         {
-            foreach (var child in element.Children)
-            {
-                FindMapsInElement(child, highlights);
-            }
+            FindMapsInElement(children[i], highlights, activeEntries);
         }
     }
 }
