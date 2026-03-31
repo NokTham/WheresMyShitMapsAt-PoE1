@@ -1,4 +1,4 @@
-﻿using ExileCore.Shared.Helpers;
+using ExileCore.Shared.Helpers;
 using System.Collections.Generic;
 using System.Drawing;
 using WheresMyShitMapsAt.Types;
