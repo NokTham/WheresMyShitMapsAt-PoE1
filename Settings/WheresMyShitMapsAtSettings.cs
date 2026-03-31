@@ -13,6 +13,7 @@ public sealed class WheresMyShitMapsAtSettings : ISettings
     public ToggleNode FilterInventory { get; set; } = new(true);
     public ToggleNode FilterShops { get; set; } = new(true);
     public ToggleNode FilterTrade { get; set; } = new(true);
+    public RangeNode<int> ScanInterval { get; set; } = new RangeNode<int>(200, 10, 2000);
     public List<TableEntry> Entries { get; set; } = [];
     public WheresMyShitMapsAtSettingsMenu Menu { get; set; }
 
