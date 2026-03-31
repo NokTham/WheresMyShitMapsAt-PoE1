@@ -11,6 +11,7 @@ using ExileCore.PoEMemory;
 using ExileCore.Shared.Enums;
 using ExileCore;
 using ExileCore.Shared.Helpers;
+using MapModType = WheresMyShitMapsAt.Settings.ModType;
 
 namespace WheresMyShitMapsAt;
 
@@ -50,14 +51,16 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
         _lastScanTime = DateTime.Now;
 
-        var activeEntries = Settings.Entries.Where(x => x.Active).ToList();
+        var activeBadMods = Settings.Entries.Where(x => x.Active && x.Type == MapModType.Bad).ToList();
+        var activeGoodMods = Settings.Entries.Where(x => x.Active && x.Type == MapModType.Good).ToList();
+
         var newHighlights = new Dictionary<long, MapHighlightInfo>();
 
         // 4. Process various UI elements
-        ProcessInventory(newHighlights, activeEntries);
-        ProcessStash(newHighlights, activeEntries);
-        ProcessShops(newHighlights, activeEntries);
-        ProcessTrade(newHighlights, activeEntries);
+        ProcessInventory(newHighlights, activeBadMods, activeGoodMods);
+        ProcessStash(newHighlights, activeBadMods, activeGoodMods);
+        ProcessShops(newHighlights, activeBadMods, activeGoodMods);
+        ProcessTrade(newHighlights, activeBadMods, activeGoodMods);
 
         _highlightCache.Update(newHighlights);
 
@@ -75,7 +78,7 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
     public NormalInventoryItem GetPreviewItem() => _previewItem;
 
-    private void ProcessInventory(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
+    private void ProcessInventory(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         if (!Settings.FilterInventory.Value || !GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
             return;
@@ -84,20 +87,19 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
             .InventoryPanel[InventoryIndex.PlayerInventory]
             .VisibleInventoryItems;
 
-        // Update ProcessItems to also take activeEntries or just use the logic directly
-        ProcessItems(inventoryItems, highlights, activeEntries);
+        ProcessItems(inventoryItems, highlights, badMods, goodMods);
     }
 
-    private void ProcessStash(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
+    private void ProcessStash(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         var stashElement = GameController.IngameState.IngameUi.StashElement;
         if (!Settings.FilterStash.Value || stashElement?.IsVisible != true)
             return;
 
-        FindMapsInElement(stashElement, highlights, activeEntries); // Fixed call
+        FindMapsInElement(stashElement, highlights, badMods, goodMods);
     }
 
-    private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
+    private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         if (!Settings.FilterShops.Value) return;
 
@@ -105,36 +107,35 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
 
         // Check various shop windows and pass the list
         if (ui.OfflineMerchantPanel?.IsVisible == true)
-            FindMapsInElement(ui.OfflineMerchantPanel, highlights, activeEntries);
+            FindMapsInElement(ui.OfflineMerchantPanel, highlights, badMods, goodMods);
 
         Element shopWindow = ui.PurchaseWindow?.IsVisible == true ? ui.PurchaseWindow :
                             ui.PurchaseWindowHideout?.IsVisible == true ? ui.PurchaseWindowHideout :
                             ui.HaggleWindow?.IsVisible == true ? ui.HaggleWindow : null;
 
         if (shopWindow != null)
-            FindMapsInElement(shopWindow, highlights, activeEntries);
+            FindMapsInElement(shopWindow, highlights, badMods, goodMods);
     }
 
-    private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
+    private void ProcessTrade(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         if (!Settings.FilterTrade.Value) return;
 
         var tradeWindow = GameController.IngameState.IngameUi.TradeWindow;
         if (tradeWindow != null && tradeWindow.IsVisible)
         {
-            FindMapsInElement(tradeWindow, highlights, activeEntries);
+            FindMapsInElement(tradeWindow, highlights, badMods, goodMods);
         }
     }
     private void ProcessItems(
     IEnumerable<NormalInventoryItem> items,
     Dictionary<long, MapHighlightInfo> highlights,
-    List<TableEntry> activeEntries)
+    List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         foreach (var item in items.Where(IsValidMap))
         {
             var mods = item.Item.GetComponent<Mods>();
-            // Pass the pre-filtered activeEntries here
-            var modMatch = MapModMatcher.MatchMods(mods, activeEntries);
+            var modMatch = MapModMatcher.MatchMods(mods, badMods, goodMods);
 
             if (modMatch.HasAnyMatch)
             {
@@ -166,47 +167,44 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
     {
         try
         {
-            return inventoryItem?.Item != null
-                && inventoryItem.Item.TryGetComponent(out Mods mods)
+            var item = inventoryItem?.Item;
+            return item != null
+                && item.TryGetComponent(out Mods mods)
                 && mods.Identified
-                && inventoryItem.Item.HasComponent<MapKey>(); // Uses the specific component
+                && item.HasComponent<MapKey>();
         }
-        catch (Exception)
-        {
-            return false;
-        }
+        catch { return false; }
     }
-    private void FindMapsInElement(Element element, Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> activeEntries)
+
+    private void FindMapsInElement(Element element, Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         // 1. Basic visibility check
-        if (element == null || !element.IsVisible || element.Address == 0) return;
+        if (element == null || element.Address == 0 || !element.IsVisible) return;
+
         if (element.ChildCount <= 3)
         {
             var item = element.AsObject<NormalInventoryItem>();
-            if (item?.Item != null && IsValidMap(item))
+            long addr = item?.Item?.Address ?? 0;
+            if (addr != 0 && !highlights.ContainsKey(addr) && IsValidMap(item))
             {
-                long addr = item.Item.Address;
-                if (!highlights.ContainsKey(addr))
-                {
-                    var mods = item.Item.GetComponent<Mods>();
-                    var modMatch = MapModMatcher.MatchMods(mods, activeEntries);
+                var mods = item.Item.GetComponent<Mods>();
+                var modMatch = MapModMatcher.MatchMods(mods, badMods, goodMods);
 
-                    if (modMatch.HasAnyMatch)
-                    {
-                        highlights[addr] = new MapHighlightInfo(
-                            Center: item.GetClientRectCache.Center.ToVector2Num(),
-                            HasBadMod: modMatch.HasBadMod,
-                            HasGoodMod: modMatch.HasGoodMod,
-                            Item: item
-                        );
-                    }
+                if (modMatch.HasAnyMatch)
+                {
+                    highlights[addr] = new MapHighlightInfo(
+                        Center: item.GetClientRectCache.Center.ToVector2Num(),
+                        HasBadMod: modMatch.HasBadMod,
+                        HasGoodMod: modMatch.HasGoodMod,
+                        Item: item
+                    );
                 }
             }
         }
-        var children = element.Children;
-        for (int i = 0; i < children.Count; i++)
+
+        foreach (var child in element.Children)
         {
-            FindMapsInElement(children[i], highlights, activeEntries);
+            FindMapsInElement(child, highlights, badMods, goodMods);
         }
     }
 }
