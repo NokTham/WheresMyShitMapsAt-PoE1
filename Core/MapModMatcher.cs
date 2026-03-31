@@ -13,16 +13,9 @@ public sealed class MapModMatcher
         public bool HasAnyMatch => HasBadMod || HasGoodMod;
     }
 
-    public static ModMatchResult MatchMods(Mods mods, IEnumerable<TableEntry> entries)
+    public static ModMatchResult MatchMods(Mods mods, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
-        var activeEntries = entries.Where(x => x.Active).ToList();
-
-        if (activeEntries.Count == 0)
-            return new ModMatchResult(false, false);
-
         var explicitMods = mods.ExplicitMods;
-        var badMods = activeEntries.Where(x => x.Type == ModType.Bad);
-        var goodMods = activeEntries.Where(x => x.Type == ModType.Good);
 
         return new ModMatchResult(
             HasBadMod: HasMatchingMod(explicitMods, badMods),
@@ -31,18 +24,20 @@ public sealed class MapModMatcher
     }
 
     private static bool HasMatchingMod(
-        IEnumerable<ItemMod> explicitMods,
-        IEnumerable<TableEntry> targetMods)
+        List<ItemMod> explicitMods,
+        List<TableEntry> targetMods)
     {
-        if (!explicitMods.Any() || !targetMods.Any())
+        if (explicitMods.Count == 0 || targetMods.Count == 0)
             return false;
 
-        var modNames = explicitMods.Select(x => x.Name).ToList();
-
-        return targetMods.Any(entry =>
-            modNames.Any(modName =>
-                modName.Contains(entry.Name)
-            )
-        );
+        foreach (var entry in targetMods)
+        {
+            foreach (var mod in explicitMods)
+            {
+                if (mod.Name.Contains(entry.Name, System.StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 }
