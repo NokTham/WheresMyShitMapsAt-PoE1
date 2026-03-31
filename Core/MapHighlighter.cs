@@ -7,25 +7,27 @@ using Graphics = ExileCore.Graphics;
 namespace WheresMyShitMapsAt.Core;
 public sealed class MapHighlighter
 {
-    private readonly Color _badModColor;
-    private readonly Color _goodModColor;
+    private SharpDX.Color _badModColor;
+    private SharpDX.Color _goodModColor;
     private Graphics _graphics;
 
     public MapHighlighter()
     {
-        _badModColor = Color.FromArgb(
+        var bad = Color.FromArgb(
             MapConstants.Alpha,
             MapConstants.Colors.Bad.Red,
             MapConstants.Colors.Bad.Green,
             MapConstants.Colors.Bad.Blue
         );
+        _badModColor = bad.ToSharpDx();
 
-        _goodModColor = Color.FromArgb(
+        var good = Color.FromArgb(
             MapConstants.Alpha,
             MapConstants.Colors.Good.Red,
             MapConstants.Colors.Good.Green,
             MapConstants.Colors.Good.Blue
         );
+        _goodModColor = good.ToSharpDx();
     }
 
     public void Initialise(Graphics graphics)
@@ -43,18 +45,18 @@ public sealed class MapHighlighter
                 {
                     _graphics.DrawRectFilledMultiColor(highlight.Item.GetClientRectCache.TopLeft.ToVector2Num(),
                         highlight.Item.GetClientRectCache.BottomRight.ToVector2Num(),
-                        _goodModColor.ToSharpDx(),
-                        _badModColor.ToSharpDx(),
-                        _goodModColor.ToSharpDx(),
-                        _badModColor.ToSharpDx());
+                        _goodModColor,
+                        _badModColor,
+                        _goodModColor,
+                        _badModColor);
                 }
                 else if (highlight.HasBadMod)
                 {
-                    _graphics.DrawRectFilledMultiColor(highlight.Item.GetClientRectCache.TopLeft.ToVector2Num(), highlight.Item.GetClientRectCache.BottomRight.ToVector2Num(), _badModColor.ToSharpDx(), _badModColor.ToSharpDx(), _badModColor.ToSharpDx(), _badModColor.ToSharpDx());
+                    _graphics.DrawBox(highlight.Item.GetClientRectCache.TopLeft.ToVector2Num(), highlight.Item.GetClientRectCache.BottomRight.ToVector2Num(), _badModColor);
                 }
                 else if (highlight.HasGoodMod)
                 {
-                    _graphics.DrawRectFilledMultiColor(highlight.Item.GetClientRectCache.TopLeft.ToVector2Num(), highlight.Item.GetClientRectCache.BottomRight.ToVector2Num(), _goodModColor.ToSharpDx(), _goodModColor.ToSharpDx(), _goodModColor.ToSharpDx(), _goodModColor.ToSharpDx());
+                    _graphics.DrawBox(highlight.Item.GetClientRectCache.TopLeft.ToVector2Num(), highlight.Item.GetClientRectCache.BottomRight.ToVector2Num(), _goodModColor);
                 }
             }
             catch { }
