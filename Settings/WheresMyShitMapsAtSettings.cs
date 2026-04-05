@@ -10,10 +10,12 @@ public sealed class WheresMyShitMapsAtSettings : ISettings
     public ToggleNode Enable { get; set; } = new(false);
     public HotkeyNodeV2 PreviewHotkey { get; set; } = new(Keys.None);
     public ToggleNode FilterStash { get; set; } = new(false);
+    public ToggleNode FilterMapStash { get; set; } = new(false);
     public ToggleNode FilterInventory { get; set; } = new(true);
     public ToggleNode FilterShops { get; set; } = new(true);
     public ToggleNode FilterTrade { get; set; } = new(true);
     public RangeNode<int> ScanInterval { get; set; } = new RangeNode<int>(200, 10, 2000);
+    public RangeNode<int> MapStashScanInterval { get; set; } = new RangeNode<int>(500, 10, 5000);
     public List<TableEntry> Entries { get; set; } = [];
     public WheresMyShitMapsAtSettingsMenu Menu { get; set; }
 
