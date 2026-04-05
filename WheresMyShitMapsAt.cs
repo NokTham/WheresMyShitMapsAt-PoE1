@@ -46,7 +46,20 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
         if (!Settings.Enable.Value)
             return null;
 
-        if ((DateTime.Now - _lastScanTime).TotalMilliseconds < Settings.ScanInterval.Value)
+        if (Settings.PreviewHotkey.PressedOnce())
+        {
+            var element = GameController.IngameState.UIHoverElement;
+            if (element?.AsObject<Element>() is { } hoveredElement)
+            {
+                _previewItem = hoveredElement.AsObject<NormalInventoryItem>();
+            }
+        }
+
+        var stash = GameController.IngameState.IngameUi.StashElement;
+        var isMapStashOpen = stash != null && stash.IsVisible && stash.VisibleStash?.InvType == InventoryType.MapStash;
+        var currentInterval = isMapStashOpen ? Settings.MapStashScanInterval.Value : Settings.ScanInterval.Value;
+
+        if ((DateTime.Now - _lastScanTime).TotalMilliseconds < currentInterval)
             return null;
 
         _lastScanTime = DateTime.Now;
@@ -63,15 +76,6 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
         ProcessTrade(newHighlights, activeBadMods, activeGoodMods);
 
         _highlightCache.Update(newHighlights);
-
-        if (Settings.PreviewHotkey.PressedOnce())
-        {
-            var element = GameController.IngameState.UIHoverElement;
-            if (element?.AsObject<Element>() is { } hoveredElement)
-            {
-                _previewItem = hoveredElement.AsObject<NormalInventoryItem>();
-            }
-        }
 
         return null;
     }
@@ -93,10 +97,15 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
     private void ProcessStash(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
     {
         var stashElement = GameController.IngameState.IngameUi.StashElement;
-        if (!Settings.FilterStash.Value || stashElement?.IsVisible != true)
+        if (stashElement == null || !stashElement.IsVisible || stashElement.VisibleStash == null)
             return;
 
-        FindMapsInElement(stashElement, highlights, badMods, goodMods);
+        var visibleStash = stashElement.VisibleStash;
+        var isMapStash = visibleStash.InvType == InventoryType.MapStash;
+        var shouldScan = isMapStash ? Settings.FilterMapStash.Value : Settings.FilterStash.Value;
+
+        if (shouldScan)
+            FindMapsInElement(stashElement, highlights, badMods, goodMods);
     }
 
     private void ProcessShops(Dictionary<long, MapHighlightInfo> highlights, List<TableEntry> badMods, List<TableEntry> goodMods)
@@ -156,6 +165,7 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
         // Ensure we don't exit early if ANY of the filters are active
         if (!Settings.FilterInventory.Value &&
             !Settings.FilterStash.Value &&
+            !Settings.FilterMapStash.Value &&
             !Settings.FilterShops.Value &&
             !Settings.FilterTrade.Value)
             return;
@@ -171,7 +181,7 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
             return item != null
                 && item.TryGetComponent(out Mods mods)
                 && mods.Identified
-                && item.HasComponent<MapKey>();
+                && item.Path.StartsWith("Metadata/Items/Maps/", StringComparison.Ordinal);
         }
         catch { return false; }
     }
@@ -181,7 +191,7 @@ public sealed class WheresMyShitMapsAt : BaseSettingsPlugin<WheresMyShitMapsAtSe
         // 1. Basic visibility check
         if (element == null || element.Address == 0 || !element.IsVisible) return;
 
-        if (element.ChildCount <= 3)
+        if (element.ChildCount <= 5)
         {
             var item = element.AsObject<NormalInventoryItem>();
             long addr = item?.Item?.Address ?? 0;
